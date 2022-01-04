@@ -31,7 +31,7 @@ obs_geo <- file.path(dir_data, "obs.geojson")
 
 # get species occurrence data from GBIF with coordinates
 (res <- spocc::occ(
-  query = 'Sphyrna mokarran', 
+  query = 'Phoenicopterus ruber', 
   from = 'gbif', 
   has_coords = T, 
   limit = 10000
@@ -50,11 +50,75 @@ obs <- df %>%
     crs = st_crs(4326))
 
 readr::write_csv(df, obs_csv)
-sf::write_sf(obs, obs_geo)
+geojsonio::geojson_write(obs, file = "obs.geojson")
 
 # show points on map
-mapview::mapview(obs, map.types = "OpenTopoMap")
+mapview::mapview(obs$geometry, map.types = "OpenTopoMap")
 ```
+
+```{r}
+dir_env <- file.path(dir_data, "env")
+
+# set a default data directory
+options(sdmpredictors_datadir = dir_env)
+
+# choosing marine
+env_datasets <- sdmpredictors::list_datasets(terrestrial = T, marine = F)
+
+# show table of datasets
+env_datasets %>% 
+  select(dataset_code, description, citation) %>% 
+  DT::datatable()
+```
+
+```{r}
+# choose datasets for a vector
+env_datasets_vec <- c("WorldClim", "ENVIREM")
+
+# get layers
+env_layers <- sdmpredictors::list_layers(env_datasets_vec)
+DT::datatable(env_layers)
+```
+
+```{r}
+# choose layers after some inspection and perhaps consulting literature
+env_layers_vec <- c("WC_alt", "WC_bio1", "WC_bio2", "ER_tri", "ER_topoWet")
+
+# get layers
+env_stack <- load_layers(env_layers_vec)
+
+# interactive plot layers, hiding all but first (select others)
+mapview(env_stack, hide = T)
+```
+
+```{r}
+obs_hull_geo <- file.path(dir_data, "obs_hull.geojson")
+
+# make convex hull around points of observation
+obs_hull <- sf::st_convex_hull(st_union(obs))
+
+# show points on map
+mapview(
+  list(obs, obs_hull))
+```
+
+```{r}
+# save obs hull
+write_sf(obs_hull, obs_hull_geo)
+
+obs_hull_sp <- sf::as_Spatial(obs_hull)
+
+env_stack <- raster::mask(env_stack, obs_hull_sp) %>% 
+  raster::crop(extent(obs_hull_sp))
+
+mapview(obs) + 
+  mapview(env_stack, hide = T)
+```
+
+
+
+
+
 
 
 
