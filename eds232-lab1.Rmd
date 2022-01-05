@@ -24,38 +24,49 @@ dir_data <- here("data/sdm")
 dir.create("data/sdm", showWarnings = F)
 ```
 
+# Species: Explore
+
+## Get Species Observations
 
 ```{r}
 obs_csv <- file.path(dir_data, "obs.csv")
 obs_geo <- file.path(dir_data, "obs.geojson")
+redo <- F
 
 # get species occurrence data from GBIF with coordinates
-(res <- spocc::occ(
+if(!file.exists(obs_geo) | redo){
+  (res <- spocc::occ(
   query = 'Phoenicopterus ruber', 
   from = 'gbif', 
   has_coords = T, 
   limit = 10000
   ))
+  
+  df <- res$gbif$data[[1]] 
+  nrow(df) # number of rows
+  readr::write_csv(df, obs_csv)
+  
+  obs <- df %>% 
+    sf::st_as_sf(
+      coords = c("longitude", "latitude"),
+      crs = st_crs(4326)) %>% 
+    select(prov, key) # save space (joinable from obs_csv)
+  sf::write_sf(obs, obs_geo, delete_dsn=T)
+}
+obs <- sf::read_sf(obs_geo)
+nrow(obs)
+
+
 ```
 
 ```{r}
-df <- res$gbif$data[[1]] 
-nrow(df) # number of rows
-```
-
-```{r}
-obs <- df %>% 
-  sf::st_as_sf(
-    coords = c("longitude", "latitude"),
-    crs = st_crs(4326))
-
-readr::write_csv(df, obs_csv)
-geojsonio::geojson_write(obs, file = "obs.geojson")
-
 # show points on map
-mapview::mapview(obs$geometry, map.types = "OpenTopoMap")
+mapview::mapview(obs, map.types = "OpenTopoMap")
 ```
 
+## Get Environmental Data 
+
+### Presence
 ```{r}
 dir_env <- file.path(dir_data, "env")
 
@@ -88,14 +99,21 @@ env_layers_vec <- c("WC_alt", "WC_bio1", "WC_bio2", "ER_tri", "ER_topoWet")
 env_stack <- load_layers(env_layers_vec)
 
 # interactive plot layers, hiding all but first (select others)
-mapview(env_stack, hide = T)
+plot(env_stack, nc=2)
 ```
 
 ```{r}
 obs_hull_geo <- file.path(dir_data, "obs_hull.geojson")
+env_stack_grd <- file.path(dir_data, "env_stack.grd")
 
-# make convex hull around points of observation
-obs_hull <- sf::st_convex_hull(st_union(obs))
+if (!file.exists(obs_hull_geo) | redo){
+  # make convex hull around points of observation
+  obs_hull <- sf::st_convex_hull(st_union(obs))
+  
+  # save obs hull
+  write_sf(obs_hull, obs_hull_geo)
+}
+obs_hull <- read_sf(obs_hull_geo)
 
 # show points on map
 mapview(
@@ -103,17 +121,258 @@ mapview(
 ```
 
 ```{r}
-# save obs hull
-write_sf(obs_hull, obs_hull_geo)
+if (!file.exists(env_stack_grd) | redo){
+  obs_hull_sp <- sf::as_Spatial(obs_hull)
+  env_stack <- raster::mask(env_stack, obs_hull_sp) %>% 
+    raster::crop(extent(obs_hull_sp))
+  writeRaster(env_stack, env_stack_grd, overwrite=T)  
+}
+env_stack <- stack(env_stack_grd)
 
-obs_hull_sp <- sf::as_Spatial(obs_hull)
-
-env_stack <- raster::mask(env_stack, obs_hull_sp) %>% 
-  raster::crop(extent(obs_hull_sp))
-
-mapview(obs) + 
-  mapview(env_stack, hide = T)
+# show map
+# mapview(obs) + 
+#   mapview(env_stack, hide = T) # makes html too big for Github
+plot(env_stack, nc=2)
 ```
+
+### Pseudo-Absence 
+
+```{r}
+absence_geo <- file.path(dir_data, "absence.geojson")
+pts_geo     <- file.path(dir_data, "pts.geojson")
+pts_env_csv <- file.path(dir_data, "pts_env.csv")
+
+if (!file.exists(absence_geo) | redo){
+  # get raster count of observations
+  r_obs <- rasterize(
+    sf::as_Spatial(obs), env_stack[[1]], field=1, fun='count')
+  
+  # show map
+  # mapview(obs) + 
+  #   mapview(r_obs)
+  
+  # create mask for 
+  r_mask <- mask(env_stack[[1]] > -Inf, r_obs, inverse=T)
+  
+  # generate random points inside mask
+  absence <- dismo::randomPoints(r_mask, nrow(obs)) %>% 
+    as_tibble() %>% 
+    st_as_sf(coords = c("x", "y"), crs = 4326)
+  
+  write_sf(absence, absence_geo, delete_dsn=T)
+}
+absence <- read_sf(absence_geo)
+
+# show map of presence, ie obs, and absence
+mapview(obs, col.regions = "green") + 
+  mapview(absence, col.regions = "gray")
+```
+
+
+```{r}
+if (!file.exists(pts_env_csv) | redo){
+
+  # combine presence and absence into single set of labeled points 
+  pts <- rbind(
+    obs %>% 
+      mutate(
+        present = 1) %>% 
+      select(present, key),
+    absence %>% 
+      mutate(
+        present = 0,
+        key     = NA)) %>% 
+    mutate(
+      ID = 1:n()) %>% 
+    relocate(ID)
+  write_sf(pts, pts_geo, delete_dsn=T)
+
+  # extract raster values for points
+  pts_env <- raster::extract(env_stack, as_Spatial(pts), df=TRUE) %>% 
+    tibble() %>% 
+    # join present and geometry columns to raster value results for points
+    left_join(
+      pts %>% 
+        select(ID, present),
+      by = "ID") %>% 
+    relocate(present, .after = ID) %>% 
+    # extract lon, lat as single columns
+    mutate(
+      #present = factor(present),
+      lon = st_coordinates(geometry)[,1],
+      lat = st_coordinates(geometry)[,2]) %>% 
+    select(-geometry)
+  write_csv(pts_env, pts_env_csv)
+}
+pts_env <- read_csv(pts_env_csv)
+
+pts_env %>% 
+  # show first 10 presence, last 10 absence
+  slice(c(1:10, (nrow(pts_env)-9):nrow(pts_env))) %>% 
+  DT::datatable(
+    rownames = F,
+    options = list(
+      dom = "t",
+      pageLength = 20))
+```
+## Term Plots
+
+```{r}
+pts_env %>% 
+  select(-ID) %>% 
+  mutate(
+    present = factor(present)) %>% 
+  pivot_longer(-present) %>% 
+  ggplot() +
+  geom_density(aes(x = value, fill = present)) + 
+  scale_fill_manual(values = alpha(c("gray", "green"), 0.5)) +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0)) +
+  theme_bw() + 
+  facet_wrap(~name, scales = "free") +
+  theme(
+    legend.position = c(1, 0),
+    legend.justification = c(1, 0))
+```
+
+# Species: Regress
+
+```{r}
+librarian::shelf(
+  DT, dplyr, dismo, GGally, here, readr, tidyr)
+select <- dplyr::select # overwrite raster::select
+options(readr.show_col_types = F)
+
+dir_data    <- here("data/sdm")
+pts_env_csv <- file.path(dir_data, "pts_env.csv")
+
+pts_env <- read_csv(pts_env_csv)
+nrow(pts_env)
+
+datatable(pts_env, rownames = F)
+```
+
+```{r}
+GGally::ggpairs(
+  select(pts_env, -ID),
+  aes(color = factor(present)))
+```
+
+## Logistic Regression
+
+### Setup Data 
+
+```{r}
+# setup model data
+d <- pts_env %>% 
+  select(-ID) %>%  # remove terms we don't want to model
+  tidyr::drop_na() # drop the rows with NA values
+nrow(d)
+```
+
+### Linear Model 
+
+```{r}
+# fit a linear model
+mdl <- lm(present ~ ., data = d)
+summary(mdl)
+```
+
+```{r}
+y_predict <- predict(mdl, pts_env, type="response")
+y_true    <- pts_env$present
+
+range(y_predict)
+
+range(y_true)
+```
+
+### Generalized Linear Model 
+
+```{r}
+# fit a generalized linear model with a binomial logit link function
+mdl <- glm(present ~ ., family = binomial(link="logit"), data = d)
+summary(mdl)
+
+y_predict <- predict(mdl, d, type="response")
+
+range(y_predict)
+```
+
+```{r}
+# show term plots
+termplot(mdl, partial.resid = TRUE, se = TRUE, main = F)
+```
+
+### Generalized Additive Model 
+
+```{r}
+librarian::shelf(mgcv)
+
+# fit a generalized additive model with smooth predictors
+mdl <- mgcv::gam(
+  formula = present ~ s(WC_alt) + s(WC_bio1) + 
+    s(WC_bio2) + s(ER_tri) + s(ER_topoWet) + s(lon) + s(lat), 
+  family = binomial, data = d)
+summary(mdl)
+
+# show term plots
+plot(mdl, scale=0)
+```
+
+### Maximum Entropy 
+
+Maxent is probably the most commonly used species distrbution model since it performs well with few input data points, only reuires presence points and is easy to use with a Java graphical user interface (GUI).
+
+```{r}
+# load extra packages
+librarian::shelf(
+  maptools, sf)
+
+# show version of maxent
+maxent()
+```
+
+```{r}
+# get environmental rasters
+# NOTE: the first part of Lab 1. SDM - Explore got updated to write this clipped environmental raster stack
+env_stack_grd <- file.path(dir_data, "env_stack.grd")
+env_stack <- stack(env_stack_grd)
+plot(env_stack, nc=2)
+```
+
+```{r}
+# get presence-only observation points (maxent extracts raster values for you)
+obs_geo <- file.path(dir_data, "obs.geojson")
+obs_sp <- read_sf(obs_geo) %>% 
+  sf::as_Spatial() # maxent prefers sp::SpatialPoints over newer sf::sf class
+
+# fit a maximum entropy model
+mdl <- maxent(env_stack, obs_sp)
+
+plot(mdl)
+
+# plot term plots
+response(mdl)
+```
+
+
+```{r maxent}
+# predict
+y_predict <- predict(env_stack, mdl) #, ext=ext, progress='')
+
+plot(y_predict, main='Maxent, raw prediction')
+data(wrld_simpl, package="maptools")
+plot(wrld_simpl, add=TRUE, border='dark grey')
+
+```
+
+
+
+
+
+
+
 
 
 
