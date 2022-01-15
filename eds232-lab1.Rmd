@@ -10,7 +10,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 
 # load packages, installing if missing
 if (!require(librarian)){
@@ -557,6 +557,7 @@ pts_test   <- rsample::testing(pts_split)
 pts_train_p <- pts_train %>% 
   filter(present == 1) %>% 
   as_Spatial()
+
 pts_train_a <- pts_train %>% 
   filter(present == 0) %>% 
   as_Spatial()
@@ -650,10 +651,10 @@ thr <- threshold(e)[['spec_sens']]
 thr
 
 # of the presences observed, how many true predictions are we getting. 
-p_true <- na.omit(extract(y_maxv, pts_test_p) >= thr)
+p_true <- na.omit(raster::extract(y_maxv, pts_test_p) >= thr)
 # of the absences observed, how many true predictions are we getting 
 # anything less than the threshold will be a 0
-a_true <- na.omit(extract(y_maxv, pts_test_a) < thr)
+a_true <- na.omit(raster::extract(y_maxv, pts_test_a) < thr)
 
 
 # TPR & TNR is true positive and negative rates 
