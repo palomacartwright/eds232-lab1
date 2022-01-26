@@ -1,7 +1,7 @@
 ---
 title: 'EDS 232: Lab 1'
 author: "Paloma Cartwright"
-date: "03/01/2022"
+date: "`r Sys.Date()`"
 output: 
   html_document:
     toc: true
@@ -18,14 +18,35 @@ if (!require(librarian)){
   library(librarian)
 }
 librarian::shelf(
-  dismo, dplyr, DT, ggplot2, here, htmltools, leaflet, mapview, purrr, raster, readr, rgbif, rgdal, rJava, sdmpredictors, sf, spocc, tidyr,
-  caret,       # m: modeling framework
+  caret,
+  dismo, # species distribution modeling: maxent(), predict(), evaluate(),
+  dplyr, 
+  DT, 
+  GGally, 
+  ggplot2, 
+  here, 
+  htmltools, 
+  leaflet, 
+  mapview, 
+  maptools,
   pdp,         # X: partial dependence plots
+  mgcv, 
+  purrr,
   ranger,      # m: random forest modeling
+  raster,
+  readr, 
+  rgbif, 
+  rgdal, 
+  rJava,
   rpart,       # m: recursive partition modeling
   rpart.plot,  # m: recursive partition plotting
   rsample,     # d: split train/test data
+  sdmpredictors, 
+  sf,
   skimr,       # d: skim summarize data table
+  spocc, 
+  tidyr,
+  usdm, # uncertainty analysis for species distribution models: vifcor()
   vip)
 
 select <- dplyr::select # overwrite raster::select
@@ -42,6 +63,15 @@ ggplot2::theme_set(ggplot2::theme_light())
 dir_data <- here("data/sdm")
 dir.create("data/sdm", showWarnings = F)
 pts_env_csv <- file.path(dir_data, "pts_env.csv")
+pts_geo       <- file.path(dir_data, "pts.geojson")
+env_stack_grd <- file.path(dir_data, "env_stack.grd")
+mdl_maxv_rds  <- file.path(dir_data, "mdl_maxent_vif.rds")
+
+# read points of observation: presence (1) and absence (0)
+pts <- read_sf(pts_geo)
+
+# read raster stack of environment
+env_stack <- raster::stack(env_stack_grd)
 
 ```
 
@@ -49,45 +79,67 @@ pts_env_csv <- file.path(dir_data, "pts_env.csv")
 
 ## Get Species Observations
 
+### 1 and 2. 
+
+The species I will be using for this lab is the American Flamingo, *Phoenicopterus ruber*. There is an image of an American Flamingo taken by my dad. 
+
+
+![](images/flamingo.jpeg)
+
 ```{r}
 obs_csv <- file.path(dir_data, "obs.csv")
 obs_geo <- file.path(dir_data, "obs.geojson")
-redo <- F
 
 # get species occurrence data from GBIF with coordinates
-if(!file.exists(obs_geo) | redo){
-  (res <- spocc::occ(
-  query = 'Phoenicopterus ruber', 
-  from = 'gbif', 
-  has_coords = T, 
-  limit = 10000
-  ))
+res <- spocc::occ(
+    query = 'Phoenicopterus ruber', 
+    from = 'gbif', 
+    has_coords = T,
+    limit = 10000
+)
   
-  df <- res$gbif$data[[1]] 
-  nrow(df) # number of rows
-  readr::write_csv(df, obs_csv)
+df <- res$gbif$data[[1]]
   
-  obs <- df %>% 
-    sf::st_as_sf(
-      coords = c("longitude", "latitude"),
-      crs = st_crs(4326)) %>% 
-    select(prov, key) # save space (joinable from obs_csv)
-  sf::write_sf(obs, obs_geo, delete_dsn=T)
-}
+clean_df <- df %>% 
+  filter(latitude < 40, 
+         longitude < 100) %>% 
+  select(c("name", "longitude", "latitude", "prov", "key", "lifeStage", 
+           "continent", "stateProvince", "year", "species"))
+
+nrow(clean_df) # number of rows
+readr::write_csv(clean_df, obs_csv)
+obs <- clean_df %>% 
+  sf::st_as_sf(
+    coords = c("longitude", "latitude"),
+    crs = st_crs(4326)) %>% 
+  select(prov, key) # save space (joinable from obs_csv)
+
+sf::write_sf(obs, obs_geo, delete_dsn=T)
+
 obs <- sf::read_sf(obs_geo)
 nrow(obs)
 
-
 ```
+
+
+### 3. 
+
+Mapped distribution of the points are shown below 
 
 ```{r}
 # show points on map
 mapview::mapview(obs, map.types = "OpenTopoMap")
 ```
 
+### 4 and 5. **Question 1 and 2** 
+
+There are 85,299 observations of American Flamingoes in the GBIF database. After cleaning the 10,000 observations to remove 4 in zoos in Northern Europe, my map displayed 9,996 observations of flamingoes. I considered removing duplicates but flamingoes usually travel in large flocks so it is to be expected that there would be multiple at very similar coordinates. 
+
+
 ## Get Environmental Data 
 
 ### Presence
+
 ```{r}
 dir_env <- file.path(dir_data, "env")
 
@@ -103,6 +155,8 @@ env_datasets %>%
   DT::datatable()
 ```
 
+
+
 ```{r}
 # choose datasets for a vector
 env_datasets_vec <- c("WorldClim", "ENVIREM")
@@ -112,9 +166,13 @@ env_layers <- sdmpredictors::list_layers(env_datasets_vec)
 DT::datatable(env_layers)
 ```
 
+### 6. **Question**
+
+When deciding on the environmental layers to use, I looked into what factors affected the species distribution of flamingos. The most common factors are temperature, depth of water and access to food sources. Because of this, I chose the annual mean temperature, mean daily temperature, temperature seasonality, annual precipitation, terrain and topographic wetness layers. 
+
 ```{r}
 # choose layers after some inspection and perhaps consulting literature
-env_layers_vec <- c("WC_alt", "WC_bio1", "WC_bio2", "ER_tri", "ER_topoWet")
+env_layers_vec <- c("WC_bio1", "WC_bio2", "WC_bio4", "WC_bio12", "ER_tri", "ER_topoWet")
 
 # get layers
 env_stack <- load_layers(env_layers_vec)
@@ -123,31 +181,29 @@ env_stack <- load_layers(env_layers_vec)
 plot(env_stack, nc=2)
 ```
 
+### 7. Plot of environmental rasters
+
 ```{r}
-obs_hull_geo <- file.path(dir_data, "obs_hull.geojson")
+# obs_hull_geo <- file.path(dir_data, "obs_hull.geojson")
 env_stack_grd <- file.path(dir_data, "env_stack.grd")
 
-if (!file.exists(obs_hull_geo) | redo){
-  # make convex hull around points of observation
-  obs_hull <- sf::st_convex_hull(st_union(obs))
+# make convex hull around points of observation
+obs_hull <- sf::st_convex_hull(st_union(obs))
   
-  # save obs hull
-  write_sf(obs_hull, obs_hull_geo)
-}
-obs_hull <- read_sf(obs_hull_geo)
+# save obs hull
+write_sf(obs_hull, "data/sdm/obs_hull.geojson")
+obs_hull <- read_sf("data/sdm/obs_hull.geojson")
 
 # show points on map
-mapview(
-  list(obs, obs_hull))
+mapview(list(obs, obs_hull))
 ```
 
 ```{r}
-if (!file.exists(env_stack_grd) | redo){
-  obs_hull_sp <- sf::as_Spatial(obs_hull)
-  env_stack <- raster::mask(env_stack, obs_hull_sp) %>% 
-    raster::crop(extent(obs_hull_sp))
-  writeRaster(env_stack, env_stack_grd, overwrite=T)  
-}
+obs_hull_sp <- sf::as_Spatial(obs_hull)
+env_stack <- raster::mask(env_stack, obs_hull_sp) %>% 
+  raster::crop(extent(obs_hull_sp))
+
+writeRaster(env_stack, env_stack_grd, overwrite=T)  
 env_stack <- stack(env_stack_grd)
 
 # show map
@@ -158,30 +214,25 @@ plot(env_stack, nc=2)
 
 ### Pseudo-Absence 
 
+### 8. Map of pseudo-absence points 
+
 ```{r}
 absence_geo <- file.path(dir_data, "absence.geojson")
 pts_geo     <- file.path(dir_data, "pts.geojson")
 pts_env_csv <- file.path(dir_data, "pts_env.csv")
 
-if (!file.exists(absence_geo) | redo){
-  # get raster count of observations
-  r_obs <- rasterize(
-    sf::as_Spatial(obs), env_stack[[1]], field=1, fun='count')
+# get raster count of observations
+r_obs <- rasterize(
+  sf::as_Spatial(obs), env_stack[[1]], field=1, fun='count')
   
-  # show map
-  # mapview(obs) + 
-  #   mapview(r_obs)
-  
-  # create mask for 
-  r_mask <- mask(env_stack[[1]] > -Inf, r_obs, inverse=T)
-  
-  # generate random points inside mask
-  absence <- dismo::randomPoints(r_mask, nrow(obs)) %>% 
-    as_tibble() %>% 
-    st_as_sf(coords = c("x", "y"), crs = 4326)
-  
-  write_sf(absence, absence_geo, delete_dsn=T)
-}
+r_mask <- mask(env_stack[[1]] > -Inf, r_obs, inverse=T)
+
+absence <- dismo::randomPoints(r_mask, nrow(obs)) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("x", "y"), crs = 4326)
+
+write_sf(absence, absence_geo, delete_dsn=T)
+
 absence <- read_sf(absence_geo)
 
 # show map of presence, ie obs, and absence
@@ -191,40 +242,38 @@ mapview(obs, col.regions = "green") +
 
 
 ```{r}
-if (!file.exists(pts_env_csv) | redo){
-
-  # combine presence and absence into single set of labeled points 
-  pts <- rbind(
-    obs %>% 
-      mutate(
-        present = 1) %>% 
-      select(present, key),
-    absence %>% 
-      mutate(
-        present = 0,
-        key     = NA)) %>% 
+# combine presence and absence into single set of labeled points 
+pts <- rbind(
+  obs %>% 
     mutate(
-      ID = 1:n()) %>% 
-    relocate(ID)
-  write_sf(pts, pts_geo, delete_dsn=T)
-
-  # extract raster values for points
-  pts_env <- raster::extract(env_stack, as_Spatial(pts), df=TRUE) %>% 
-    tibble() %>% 
-    # join present and geometry columns to raster value results for points
-    left_join(
-      pts %>% 
-        select(ID, present),
-      by = "ID") %>% 
-    relocate(present, .after = ID) %>% 
-    # extract lon, lat as single columns
+      present = 1) %>% 
+    select(present, key),
+  absence %>% 
     mutate(
-      #present = factor(present),
-      lon = st_coordinates(geometry)[,1],
-      lat = st_coordinates(geometry)[,2]) %>% 
-    select(-geometry)
-  write_csv(pts_env, pts_env_csv)
-}
+      present = 0,
+      key     = NA)) %>% 
+  mutate(
+    ID = 1:n()) %>% 
+  relocate(ID)
+write_sf(pts, pts_geo, delete_dsn=T)
+
+# extract raster values for points
+pts_env <- raster::extract(env_stack, as_Spatial(pts), df=TRUE) %>% 
+  tibble() %>% 
+  # join present and geometry columns to raster value results for points
+  left_join(
+    pts %>% 
+      select(ID, present),
+    by = "ID") %>% 
+  relocate(present, .after = ID) %>% 
+  # extract lon, lat as single columns
+  mutate(
+    #present = factor(present),
+    lon = st_coordinates(geometry)[,1],
+    lat = st_coordinates(geometry)[,2]) %>% 
+  select(-geometry)
+write_csv(pts_env, pts_env_csv)
+
 pts_env <- read_csv(pts_env_csv)
 
 pts_env %>% 
@@ -236,7 +285,8 @@ pts_env %>%
       dom = "t",
       pageLength = 20))
 ```
-## Term Plots
+
+### 9. Term Plots
 
 ```{r}
 pts_env %>% 
@@ -258,20 +308,7 @@ pts_env %>%
 
 # Species: Regress
 
-```{r}
-librarian::shelf(
-  DT, dplyr, dismo, GGally, here, readr, tidyr)
-select <- dplyr::select # overwrite raster::select
-options(readr.show_col_types = F)
-
-dir_data    <- here("data/sdm")
-pts_env_csv <- file.path(dir_data, "pts_env.csv")
-
-pts_env <- read_csv(pts_env_csv)
-nrow(pts_env)
-
-datatable(pts_env, rownames = F)
-```
+### 10. Plot of GGPairs
 
 ```{r}
 GGally::ggpairs(
@@ -291,7 +328,7 @@ d <- pts_env %>%
 nrow(d)
 ```
 
-### Linear Model 
+### 11. Linear Model 
 
 ```{r}
 # fit a linear model
@@ -308,7 +345,7 @@ range(y_predict)
 range(y_true)
 ```
 
-### Generalized Linear Model 
+### 12. Generalized Linear Model 
 
 ```{r}
 # fit a generalized linear model with a binomial logit link function
@@ -320,20 +357,20 @@ y_predict <- predict(mdl, d, type="response")
 range(y_predict)
 ```
 
+### 13. GLM Term Plots 
+
 ```{r}
 # show term plots
 termplot(mdl, partial.resid = TRUE, se = TRUE, main = F)
 ```
 
-### Generalized Additive Model 
+### 14 and 15. Generalized Additive Model and Term Plots
 
 ```{r}
-librarian::shelf(mgcv)
 
 # fit a generalized additive model with smooth predictors
 mdl <- mgcv::gam(
-  formula = present ~ s(WC_alt) + s(WC_bio1) + 
-    s(WC_bio2) + s(ER_tri) + s(ER_topoWet) + s(lon) + s(lat), 
+  formula = present ~ s(WC_bio1) + s(WC_bio2) + s(WC_bio4) + s(WC_bio12) + s(ER_tri) + s(ER_topoWet) + s(lon) + s(lat), 
   family = binomial, data = d)
 summary(mdl)
 
@@ -341,26 +378,29 @@ summary(mdl)
 plot(mdl, scale=0)
 ```
 
+### 16. **Question**
+
+Which GAM environmental variables, and even range of values, seem to contribute most towards presence (above 0 response) versus absence (below 0 response)?
+
+`WC_bio2` (mean daily temperature range) and `lat` (latitude) are the two GAM environmental variables that seem to contribute most towards presence. They both have periods where they are below zero, but when comparing them to the other variables they contribute more towards presence. 
+
 ### Maximum Entropy 
 
-Maxent is probably the most commonly used species distrbution model since it performs well with few input data points, only reuires presence points and is easy to use with a Java graphical user interface (GUI).
+Maxent is probably the most commonly used species distribution model since it performs well with few input data points, only requires presence points and is easy to use with a Java graphical user interface (GUI).
+
+### 17. Maxent Models 
 
 ```{r}
-# load extra packages
-librarian::shelf(
-  maptools, sf)
-
 # show version of maxent
 maxent()
-```
-
-```{r}
 # get environmental rasters
 # NOTE: the first part of Lab 1. SDM - Explore got updated to write this clipped environmental raster stack
 env_stack_grd <- file.path(dir_data, "env_stack.grd")
 env_stack <- stack(env_stack_grd)
 plot(env_stack, nc=2)
 ```
+
+### 18 and 19. Maxent Variable Contribution Plot and Term Plots
 
 ```{r}
 # get presence-only observation points (maxent extracts raster values for you)
@@ -376,6 +416,12 @@ plot(mdl)
 # plot term plots
 response(mdl)
 ```
+
+### 20. **Question** 
+
+Which Maxent environmental variables, and even range of values, seem to contribute most towards presence (closer to 1 response) and how might this differ from the GAM results?
+
+For the Maxent variables, `WC_bio1` (annual mean temperature) and `WC_bio2` (mean daily temperature range) seem to contribute most to presence. This is the same in the case of `WC_bio2` but `WC_bio1` differs from the GAM where it contributes more to absences. 
 
 
 ```{r maxent}
@@ -402,8 +448,9 @@ d <- pts_env %>%
 skim(d)
 ```
 
-
 ## Split data into training and testing 
+
+### 21. Tabular counts of 1 vs 0 before and after split
 
 ```{r}
 # create training set with 80% of full data
@@ -418,6 +465,8 @@ table(d_train$present)
 ## Decision Trees 
 
 ### Partition, depth = 1
+
+### 22. Rpart model output and plot, depth=1
 
 ```{r}
 # run decision stump model
@@ -435,14 +484,20 @@ rpart.plot(mdl)
 
 ### Partition, depth=default
 
+### 23. Rpart model output and plot, depth=default
+
 ```{r}
 # decision tree with defaults
 mdl <- rpart(present ~ ., data = d_train)
 mdl
+
+rpart.plot(mdl)
 ```
 
+### 24. Rpart complexity parameter plot
+
+
 ```{r}
-rpart.plot(mdl)
 
 # plot complexity parameter
 plotcp(mdl)
@@ -452,7 +507,14 @@ mdl$cptable
 
 ```
 
+### 25. **Question:**
+
+Based on the complexity plot threshold, what size of tree is recommended?
+Based on the threshold, the tree is recommended to have a size of 10. 
+
 ### Feature interpretation 
+
+### 26. Rpart variable importance plot
 
 ```{r}
 # caret cross validation results
@@ -467,16 +529,23 @@ ggplot(mdl_caret)
 vip(mdl_caret, num_features = 40, bar = FALSE)
 ```
 
-```{r}
-# Construct partial dependence plots
-p1 <- partial(mdl_caret, pred.var = "lat") %>% autoplot()
-p2 <- partial(mdl_caret, pred.var = "WC_bio2") %>% autoplot()
-p3 <- partial(mdl_caret, pred.var = c("lat", "WC_bio2")) %>% 
-  plotPartial(levelplot = FALSE, zlab = "yhat", drape = TRUE, 
-              colorkey = TRUE, screen = list(z = -20, x = -60))
+### 27. **Question**
 
-# Display plots side by side
-gridExtra::grid.arrange(p1, p2, p3, ncol = 3)
+What are the top 3 most important variables of your model?
+
+Based on the variable importance plot, the top three most important variables are latitude, `WC_bio2` (daily temperature range), and longitude. 
+
+```{r}
+# commented these out because they were causing my code to crash. 
+# Construct partial dependence plots
+# p1 <- partial(mdl_caret, pred.var = "lat") %>% autoplot()
+# p2 <- partial(mdl_caret, pred.var = "WC_bio2") %>% autoplot()
+# p3 <- partial(mdl_caret, pred.var = c("lat", "WC_bio2")) %>% 
+#   plotPartial(levelplot = FALSE, zlab = "yhat", drape = TRUE, 
+#               colorkey = TRUE, screen = list(z = -20, x = -60))
+# 
+# # Display plots side by side
+# gridExtra::grid.arrange(p1, p2, p3, ncol = 3)
 ```
 
 ## Random Forests 
@@ -496,6 +565,8 @@ mdl_rf <- ranger(present ~ ., data = d_train)
 
 ### Feature Interpretation 
 
+### 28. RandomForest variable importance
+
 ```{r}
 # re-run model with impurity-based variable importance
 mdl_impurity <- ranger(
@@ -513,37 +584,13 @@ gridExtra::grid.arrange(p1, p2, nrow = 1)
 
 ```
 
-# Species: Evaluate 
+### 29. **Question:** 
 
-## Setup 
+How might variable importance differ between rpart and RandomForest in your model outputs?
+Variable importance for rpart and impurity based RandomForest modeling remained consistent, but for permutation based random forest, `WC_bio2` became more important than `WC_bio12`.
 
-```{r}
-librarian::shelf(
-  dismo, # species distribution modeling: maxent(), predict(), evaluate(), 
-  dplyr, ggplot2, GGally, here, maptools, readr, 
-  raster, readr, rsample, sf,
-  usdm)  # uncertainty analysis for species distribution models: vifcor()
-select = dplyr::select
 
-# options
-set.seed(42)
-options(
-  scipen = 999,
-  readr.show_col_types = F)
-ggplot2::theme_set(ggplot2::theme_light())
-
-# paths
-dir_data      <- here("data/sdm")
-pts_geo       <- file.path(dir_data, "pts.geojson")
-env_stack_grd <- file.path(dir_data, "env_stack.grd")
-mdl_maxv_rds  <- file.path(dir_data, "mdl_maxent_vif.rds")
-
-# read points of observation: presence (1) and absence (0)
-pts <- read_sf(pts_geo)
-
-# read raster stack of environment
-env_stack <- raster::stack(env_stack_grd)
-```
+# Species: Evaluate
 
 ## 1.1 Split observations into training and testing 
 
@@ -566,6 +613,9 @@ pts_train_a <- pts_train %>%
 
 
 ## 2 Calibrate: Model Selection
+
+### 30 and 31. Plot of pairs from environmental stack and VIF per variable
+
 ```{r}
 # show pairs plot before multicollinearity reduction with vifcor()
 pairs(env_stack)
@@ -576,7 +626,6 @@ pairs(env_stack)
 
 # the highest vif is the highest multicorrelation 
 
-
 # calculate variance inflation factor per predictor, a metric of multicollinearity between variables
 vif(env_stack)
 
@@ -585,11 +634,13 @@ vif(env_stack)
 v <- vifcor(env_stack, th=0.7) 
 v
 # gives you a reduced set of predictors 
+```
 
+### 32 and 33. Variables after VIF collinearity removal anf Plot of pairs after VIF collinearity removal
 
+```{r}
 # reduce enviromental raster stack by 
 env_stack_v <- usdm::exclude(env_stack, v)
-
 
 # show pairs plot after multicollinearity reduction with vifcor()
 pairs(env_stack_v)
@@ -597,12 +648,13 @@ pairs(env_stack_v)
 
 ```
 
+### 34. Plot of variable contribution
+
 ```{r}
 # fit a maximum entropy model
-if (!file.exists(mdl_maxv_rds)){
-  mdl_maxv <- maxent(env_stack_v, sf::as_Spatial(pts_train))
-  readr::write_rds(mdl_maxv, mdl_maxv_rds)
-}
+mdl_maxv <- maxent(env_stack_v, sf::as_Spatial(pts_train))
+readr::write_rds(mdl_maxv, mdl_maxv_rds)
+
 mdl_maxv <- read_rds(mdl_maxv_rds)
 
 # plot variable contributions per predictor
@@ -612,6 +664,14 @@ plot(mdl_maxv)
 # plot term plots
 response(mdl_maxv)
 ```
+
+### 35. **Question:**
+
+Which variables were removed due to multicollinearity and what is the rank of most to least important remaining variables in your model?
+`WC_bio4` and `ER_topowet` were removed due to multicollinearity. The importance ranking is `WC_bio1`, `WC_bio2`, `WC_bio12` and `ER_tri` with bio1 being the most important. 
+
+
+### 36 and 37. Maxent term plots and Map of Maxent prediction
 
 ```{r}
 # predict
@@ -625,6 +685,10 @@ plot(wrld_simpl, add=TRUE, border='dark grey')
 ## Evaluate: Model Performance
 
 ### 3.1 Area Under the Curve (AUC), Reciever Operater Characteristic (ROC) Curve and Confusion Matrix
+
+### 38 - 41. ROC threshold value maximizing specificity and sensitivity, Confusion matrix with percentages, AUC plot and Map of binary habitat
+
+
 ```{r}
 
 pts_test_p <- pts_test %>% 
