@@ -97,6 +97,11 @@ name,longitude,latitude,prov,key,lifeStage,continent,stateProvince,year,species
 "Phoenicopterus ruber Linnaeus, 1758",-89.9581,21.321897,gbif,3457128840,NA,NA,Yucatán,2022,Phoenicopterus ruber
 "Phoenicopterus ruber Linnaeus, 1758",-87.800316,21.491796,gbif,3457169788,NA,NA,Yucatán,2022,Phoenicopterus ruber
 "Phoenicopterus ruber Linnaeus, 1758",-89.865777,21.395987,gbif,3457192648,NA,NA,Yucatán,2022,Phoenicopterus ruber
+"Phoenicopterus ruber Linnaeus, 1758",22.207917,-34.04125,gbif,3457340331,NA,AFRICA,Western Cape,2022,Phoenicopterus ruber
+"Phoenicopterus ruber Linnaeus, 1758",18.624583,-33.29125,gbif,3457380305,NA,AFRICA,Western Cape,2022,Phoenicopterus ruber
+"Phoenicopterus ruber Linnaeus, 1758",27.207917,-25.54125,gbif,3457426332,NA,AFRICA,North West,2022,Phoenicopterus ruber
+"Phoenicopterus ruber Linnaeus, 1758",18.29125,-32.124583,gbif,3457446329,NA,AFRICA,Western Cape,2022,Phoenicopterus ruber
+"Phoenicopterus ruber Linnaeus, 1758",25.124583,-27.874583,gbif,3457449314,NA,AFRICA,North West,2022,Phoenicopterus ruber
 "Phoenicopterus ruber Linnaeus, 1758",-81.545779,24.613678,gbif,3018005201,Adult,NA,Florida,2021,Phoenicopterus ruber
 "Phoenicopterus ruber Linnaeus, 1758",-81.570461,24.603399,gbif,3018123935,NA,NA,Florida,2021,Phoenicopterus ruber
 "Phoenicopterus ruber Linnaeus, 1758",-81.543187,24.624563,gbif,3018126043,NA,NA,Florida,2021,Phoenicopterus ruber
@@ -9989,8 +9994,3 @@ name,longitude,latitude,prov,key,lifeStage,continent,stateProvince,year,species
 "Phoenicopterus ruber Linnaeus, 1758",-84.14733,30.151566,gbif,2664018904,NA,NA,Florida,2019,Phoenicopterus ruber
 "Phoenicopterus ruber Linnaeus, 1758",-81.24855,22.18658,gbif,2664183411,NA,NA,Matanzas,2019,Phoenicopterus ruber
 "Phoenicopterus ruber Linnaeus, 1758",-68.982216,12.139033,gbif,2664229594,NA,NA,Curaçao,2019,Phoenicopterus ruber
-"Phoenicopterus ruber Linnaeus, 1758",-88.16105,21.602049,gbif,2664332993,NA,NA,Yucatán,2019,Phoenicopterus ruber
-"Phoenicopterus ruber Linnaeus, 1758",-66.566124,18.430784,gbif,2664413967,NA,NA,Barceloneta,2019,Phoenicopterus ruber
-"Phoenicopterus ruber Linnaeus, 1758",-90.3977,20.844694,gbif,2664427806,NA,NA,Campeche,2019,Phoenicopterus ruber
-"Phoenicopterus ruber Linnaeus, 1758",-84.146774,30.131973,gbif,2664507827,NA,NA,Florida,2019,Phoenicopterus ruber
-"Phoenicopterus ruber Linnaeus, 1758",-68.987526,12.156663,gbif,2664616119,NA,NA,Curaçao,2019,Phoenicopterus ruber

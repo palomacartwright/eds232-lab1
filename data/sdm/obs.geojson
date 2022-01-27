@@ -101,6 +101,11 @@
 { "type": "Feature", "properties": { "prov": "gbif", "key": "3457128840" }, "geometry": { "type": "Point", "coordinates": [ -89.9581, 21.321897 ] } },
 { "type": "Feature", "properties": { "prov": "gbif", "key": "3457169788" }, "geometry": { "type": "Point", "coordinates": [ -87.800316, 21.491796 ] } },
 { "type": "Feature", "properties": { "prov": "gbif", "key": "3457192648" }, "geometry": { "type": "Point", "coordinates": [ -89.865777, 21.395987 ] } },
+{ "type": "Feature", "properties": { "prov": "gbif", "key": "3457340331" }, "geometry": { "type": "Point", "coordinates": [ 22.207917, -34.04125 ] } },
+{ "type": "Feature", "properties": { "prov": "gbif", "key": "3457380305" }, "geometry": { "type": "Point", "coordinates": [ 18.624583, -33.29125 ] } },
+{ "type": "Feature", "properties": { "prov": "gbif", "key": "3457426332" }, "geometry": { "type": "Point", "coordinates": [ 27.207917, -25.54125 ] } },
+{ "type": "Feature", "properties": { "prov": "gbif", "key": "3457446329" }, "geometry": { "type": "Point", "coordinates": [ 18.29125, -32.124583 ] } },
+{ "type": "Feature", "properties": { "prov": "gbif", "key": "3457449314" }, "geometry": { "type": "Point", "coordinates": [ 25.124583, -27.874583 ] } },
 { "type": "Feature", "properties": { "prov": "gbif", "key": "3018005201" }, "geometry": { "type": "Point", "coordinates": [ -81.545779, 24.613678 ] } },
 { "type": "Feature", "properties": { "prov": "gbif", "key": "3018123935" }, "geometry": { "type": "Point", "coordinates": [ -81.570461, 24.603399 ] } },
 { "type": "Feature", "properties": { "prov": "gbif", "key": "3018126043" }, "geometry": { "type": "Point", "coordinates": [ -81.543187, 24.624563 ] } },
@@ -9992,11 +9997,6 @@
 { "type": "Feature", "properties": { "prov": "gbif", "key": "2663954826" }, "geometry": { "type": "Point", "coordinates": [ -89.62855, 21.273144 ] } },
 { "type": "Feature", "properties": { "prov": "gbif", "key": "2664018904" }, "geometry": { "type": "Point", "coordinates": [ -84.14733, 30.151566 ] } },
 { "type": "Feature", "properties": { "prov": "gbif", "key": "2664183411" }, "geometry": { "type": "Point", "coordinates": [ -81.24855, 22.18658 ] } },
-{ "type": "Feature", "properties": { "prov": "gbif", "key": "2664229594" }, "geometry": { "type": "Point", "coordinates": [ -68.982216, 12.139033 ] } },
-{ "type": "Feature", "properties": { "prov": "gbif", "key": "2664332993" }, "geometry": { "type": "Point", "coordinates": [ -88.16105, 21.602049 ] } },
-{ "type": "Feature", "properties": { "prov": "gbif", "key": "2664413967" }, "geometry": { "type": "Point", "coordinates": [ -66.566124, 18.430784 ] } },
-{ "type": "Feature", "properties": { "prov": "gbif", "key": "2664427806" }, "geometry": { "type": "Point", "coordinates": [ -90.3977, 20.844694 ] } },
-{ "type": "Feature", "properties": { "prov": "gbif", "key": "2664507827" }, "geometry": { "type": "Point", "coordinates": [ -84.146774, 30.131973 ] } },
-{ "type": "Feature", "properties": { "prov": "gbif", "key": "2664616119" }, "geometry": { "type": "Point", "coordinates": [ -68.987526, 12.156663 ] } }
+{ "type": "Feature", "properties": { "prov": "gbif", "key": "2664229594" }, "geometry": { "type": "Point", "coordinates": [ -68.982216, 12.139033 ] } }
 ]
 }
